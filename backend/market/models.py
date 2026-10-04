@@ -129,6 +129,32 @@ class OrderItem(models.Model):
     price = models.DecimalField(max_digits=12, decimal_places=2)
 
 
+class UserAddress(models.Model):
+    """Customer delivery address used by the checkout flow."""
+    user = models.ForeignKey(U, on_delete=models.CASCADE, related_name="addresses")
+    first_name = models.CharField(max_length=60)
+    last_name = models.CharField(max_length=60)
+    phone = models.CharField(max_length=20)
+    address = models.CharField(max_length=300)
+    state = models.CharField(max_length=80, default="Zamfara")
+    city = models.CharField(max_length=80)
+    lga = models.ForeignKey(LGA, on_delete=models.PROTECT)
+    is_default = models.BooleanField(default=False)
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-is_default", "-created"]
+        indexes = [models.Index(fields=["user", "is_default"])]
+
+    def save(self, *args, **kwargs):
+        if self.is_default:
+            UserAddress.objects.filter(user=self.user, is_default=True).exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.first_name} {self.last_name} — {self.city}"
+
+
 class PaymentProof(models.Model):
     BANKS = [("opay", "OPay"), ("moniepoint", "Moniepoint"), ("palmpay", "PalmPay"), ("other", "Other bank")]
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="proofs")

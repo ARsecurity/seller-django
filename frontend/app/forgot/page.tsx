@@ -1,12 +1,5 @@
 "use client";
-import { useState } from "react";
-import { api } from "@/lib/api";
-export default function Forgot() {
-  const [id, setId] = useState(""); const [m, setM] = useState("");
-  async function send() {
-    try { setM((await api<{ detail: string }>("auth/password-reset/", { method: "POST", body: JSON.stringify({ identifier: id }) })).detail); }
-    catch { setM("Try again later"); }
-  }
-  return <main style={{ maxWidth: 400 }}><h2>Reset password</h2>
-    <input placeholder="Email or username" onChange={(e) => setId(e.target.value)} /><button onClick={send}>Send reset link</button><p>{m}</p></main>;
-}
+import {FormEvent,useState} from "react";
+import Link from "next/link";
+import {api} from "@/lib/api";
+export default function Forgot(){const[v,setV]=useState("");const[msg,setMsg]=useState("");const[err,setErr]=useState("");const submit=async(e:FormEvent)=>{e.preventDefault();setErr("");try{const r=await api<{detail:string}>("auth/password-reset/",{method:"POST",body:JSON.stringify({identifier:v})});setMsg(r.detail)}catch(x){setErr(x instanceof Error?x.message:"Could not process request")}};return <main className="page"><div className="shell" style={{maxWidth:500}}><div className="panel"><h1>Reset password</h1><p className="muted">Enter your username or account email.</p>{err&&<div className="error">{err}</div>}{msg&&<div className="success">{msg}</div>}<form className="form-grid" onSubmit={submit}><div className="field"><label>Username or email</label><input value={v} onChange={e=>setV(e.target.value)} required/></div><button className="primary-btn">Send reset link</button></form><Link href="/login" className="small">← Back to login</Link></div></div></main>}

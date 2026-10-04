@@ -1,15 +1,5 @@
 "use client";
-import { useState } from "react";
-import { api } from "@/lib/api";
-export default function Reset() {
-  const [pw, setPw] = useState(""); const [m, setM] = useState("");
-  async function save() {
-    const q = new URLSearchParams(location.search);
-    try { setM((await api<{ detail: string }>("auth/password-reset/confirm/", { method: "POST",
-      body: JSON.stringify({ uid: q.get("uid"), token: q.get("token"), password: pw }) })).detail); }
-    catch { setM("Invalid or expired link, or password too short (min 8)."); }
-  }
-  return <main style={{ maxWidth: 400 }}><h2>New password</h2>
-    <input type="password" placeholder="New password" onChange={(e) => setPw(e.target.value)} /><button onClick={save}>Save</button><p>{m}</p>
-    <a href="/login">Go to login</a></main>;
-}
+import {FormEvent,useEffect,useState} from "react";
+import {useRouter} from "next/navigation";
+import {api} from "@/lib/api";
+export default function Reset(){const router=useRouter();const[uid,setUid]=useState("");const[token,setToken]=useState("");const[password,setPassword]=useState("");const[error,setError]=useState("");useEffect(()=>{const p=new URLSearchParams(window.location.search);setUid(p.get("uid")||"");setToken(p.get("token")||"")},[]);const submit=async(e:FormEvent)=>{e.preventDefault();try{await api("auth/password-reset/confirm/",{method:"POST",body:JSON.stringify({uid,token,password})});router.replace("/login")}catch(x){setError(x instanceof Error?x.message:"Invalid or expired link")}};return <main className="page"><div className="shell" style={{maxWidth:500}}><div className="panel"><h1>Choose a new password</h1>{error&&<div className="error">{error}</div>}<form className="form-grid" onSubmit={submit}><div className="field"><label>New password</label><input type="password" minLength={8} value={password} onChange={e=>setPassword(e.target.value)} required/></div><button className="primary-btn">Update password</button></form></div></div></main>}

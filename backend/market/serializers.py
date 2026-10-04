@@ -49,7 +49,8 @@ class ProductSerializer(serializers.ModelSerializer):
         return round((1 - p.current_price / p.price) * 100) if p.current_price < p.price else 0
 
     def get_gallery(self, p):
-        return [i.url for i in p.images.all()]
+        urls = [i.url for i in p.images.all()]
+        return urls or ([p.image_url] if p.image_url else [])
 
     def validate_image_url(self, value):
         if value and not value.startswith("https://"):
@@ -114,26 +115,59 @@ class RegisterSerializer(serializers.Serializer):
         return get_user_model().objects.create_user(validated_data["username"], email=validated_data.get("email", ""), password=validated_data["password"])
 
 
+class UserAddressSerializer(serializers.ModelSerializer):
+    lga_name = serializers.CharField(source="lga.name", read_only=True)
+
+    class Meta:
+        model = UserAddress
+        fields = ["id", "first_name", "last_name", "phone", "address", "state", "city", "lga", "lga_name", "is_default", "created"]
+        read_only_fields = ["id", "lga_name", "created"]
+
+    def validate_lga(self, value):
+        if not value.active:
+            raise serializers.ValidationError("We do not deliver to this area yet.")
+        return value
+
+    def validate_phone(self, value):
+        compact = value.replace(" ", "").replace("-", "")
+        if not compact.startswith("+") and not compact.isdigit():
+            raise serializers.ValidationError("Enter a valid phone number.")
+        if len(compact.replace("+", "")) < 10:
+            raise serializers.ValidationError("Enter a valid phone number.")
+        return value.strip()
+
+    def create(self, validated_data):
+        validated_data["user"] = self.context["request"].user
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        validated_data.pop("user", None)
+        return super().update(instance, validated_data)
+
+
 class OrderItemIn(serializers.Serializer):
     product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.filter(active=True))
     qty = serializers.IntegerField(min_value=1, max_value=50)
 
 
 class OrderItemOut(serializers.ModelSerializer):
+    product_id = serializers.IntegerField(source="product.id", read_only=True)
     name = serializers.CharField(source="product.name", read_only=True)
+    image_url = serializers.CharField(source="product.image_url", read_only=True)
 
     class Meta:
         model = OrderItem
-        fields = ["name", "qty", "price"]
+        fields = ["product_id", "name", "image_url", "qty", "price"]
 
 
 class OrderSerializer(serializers.ModelSerializer):
     items_in = OrderItemIn(many=True, write_only=True)
     items = OrderItemOut(many=True, read_only=True)
+    lga_name = serializers.CharField(source="lga.name", read_only=True)
 
     class Meta:
         model = Order
-        fields = ["ref", "lga", "address", "phone", "method", "status", "subtotal", "delivery_fee", "discount", "coupon", "total", "items", "items_in", "created"]
+        fields = ["ref", "lga", "lga_name", "address", "phone", "method", "status", "subtotal", "delivery_fee", "discount", "coupon", "total", "items", "items_in", "created"]
         read_only_fields = ["ref", "status", "subtotal", "delivery_fee", "discount", "total", "created"]
 
     def validate_lga(self, value):
@@ -145,32 +179,37 @@ class OrderSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         items = validated_data.pop("items_in")
         user = self.context["request"].user
+        # Merge duplicate cart lines before locking inventory.
+        quantities = {}
+        for item in items:
+            quantities[item["product"].pk] = quantities.get(item["product"].pk, 0) + item["qty"]
+
         subtotal = Decimal("0")
         rows = []
-        for item in items:
-            product = Product.objects.select_for_update().get(pk=item["product"].pk, active=True)
-            if product.stock < item["qty"]:
+        for product_id, qty in quantities.items():
+            product = Product.objects.select_for_update().get(pk=product_id, active=True)
+            if product.stock < qty:
                 raise serializers.ValidationError(f"{product.name}: only {product.stock} left")
             price = product.current_price
-            product.stock -= item["qty"]
-            product.sold += item["qty"]
+            product.stock -= qty
+            product.sold += qty
             product.save(update_fields=["stock", "sold"])
-            subtotal += price * item["qty"]
-            rows.append((product, item["qty"], price))
+            subtotal += price * qty
+            rows.append((product, qty, price))
 
         code = (validated_data.pop("coupon", "") or "").strip().upper()
         discount = Decimal("0")
         if code:
             coupon = Coupon.objects.filter(code=code, active=True, min_total__lte=subtotal).first()
-            if not coupon or coupon.percent > 100:
+            if not coupon or not 0 < coupon.percent <= 100:
                 raise serializers.ValidationError("Invalid or inapplicable coupon")
             discount = (subtotal * coupon.percent / 100).quantize(Decimal("0.01"))
 
         fee = validated_data["lga"].delivery_fee
-        total = subtotal + fee - discount
+        total = max(subtotal + fee - discount, Decimal("0"))
         status_value = Order.Status.AWAITING if validated_data["method"] == "transfer" else Order.Status.PENDING
         order = Order.objects.create(buyer=user, subtotal=subtotal, delivery_fee=fee, discount=discount,
-                                     coupon=code, total=max(total, Decimal("0")), status=status_value, **validated_data)
+                                     coupon=code, total=total, status=status_value, **validated_data)
         OrderItem.objects.bulk_create([OrderItem(order=order, product=product, qty=qty, price=price) for product, qty, price in rows])
         notify(user, "Order placed", f"Order {order.ref} - total ₦{order.total}", order=order.ref, status=order.status)
         return order
@@ -182,9 +221,12 @@ class ProofSerializer(serializers.ModelSerializer):
         fields = ["bank", "sender_name", "transaction_ref"]
 
     def validate_transaction_ref(self, value):
-        if PaymentProof.objects.filter(transaction_ref=value, confirmed=True).exists():
+        value = value.strip()
+        if len(value) < 4:
+            raise serializers.ValidationError("Enter a valid transaction reference")
+        if PaymentProof.objects.filter(transaction_ref__iexact=value, confirmed=True).exists():
             raise serializers.ValidationError("This transaction reference has already been confirmed")
-        return value.strip()
+        return value
 
 
 class NotificationSerializer(serializers.ModelSerializer):

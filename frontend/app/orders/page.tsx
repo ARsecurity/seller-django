@@ -1,24 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
-import { getToken } from "@/lib/store";
-import { useNotifications } from "@/lib/useNotifications";
-type Order = { ref: string; status: string; total: string; method: string; items: { name: string; qty: number }[] };
-
-export default function Orders() {
-  const [token, setT] = useState<string>();
-  const [orders, setOrders] = useState<Order[]>([]);
-  useEffect(() => { const t = getToken(); if (!t) location.href = "/login"; setT(t); }, []);
-  const notes = useNotifications(token);
-  const [tick, setTick] = useState(0);
-  async function cancel(ref: string) { try { await api(`orders/${ref}/cancel/`, { method: "POST" }, token); setTick((n) => n + 1); } catch {} }
-  useEffect(() => {
-    if (token) api<{ results: Order[] }>("orders/", {}, token).then((d) => setOrders(d.results)).catch(() => {});
-  }, [token, notes.length, tick]);
-  return (
-    <main><h2>My orders</h2>
-      {orders.map((o) => (<div key={o.ref} className="card"><b>{o.ref}</b> · {o.status.replace(/_/g, " ")} · ₦{Number(o.total).toLocaleString()}
-        <div>{o.items.map((i) => `${i.name} ×${i.qty}`).join(", ")}</div>
-        {["pending", "awaiting_payment"].includes(o.status) && <button onClick={() => cancel(o.ref)}>Cancel order</button>}</div>))}
-    </main>);
-}
+import {useEffect,useState} from "react";
+import {api,naira} from "@/lib/api";
+import {getToken} from "@/lib/store";
+type Item={product_id:number;name:string;image_url:string;qty:number;price:string};type Order={ref:string;lga:number;lga_name:string;address:string;phone:string;method:string;status:string;subtotal:string;delivery_fee:string;discount:string;total:string;items:Item[];created:string};
+const steps=["pending","paid","processing","out_for_delivery","delivered"];
+const labels=["Placed","Paid","Preparing","On the way","Delivered"];
+export default function Orders(){const[newRef,setNewRef]=useState("");const[orders,setOrders]=useState<Order[]>([]);const[error,setError]=useState("");useEffect(()=>{setNewRef(typeof window!=="undefined"?new URLSearchParams(window.location.search).get("new")||"":"");const t=getToken();if(!t){location.href="/login?next=/orders";return}api<Order[]>("orders/",{},t).then(setOrders).catch(e=>setError(e.message))},[]);const cancel=async(ref:string)=>{const t=getToken();if(!t)return;if(!confirm("Cancel this order?"))return;try{await api(`orders/${ref}/cancel/`,{method:"POST"},t);setOrders(x=>x.map(o=>o.ref===ref?{...o,status:"cancelled"}:o))}catch(e){setError(e instanceof Error?e.message:"Could not cancel")}};return <main className="page"><div className="shell"><div className="section-head"><h1 style={{fontSize:25,margin:0}}>Your orders</h1>{newRef&&<span className="success">Order {newRef} placed ✓</span>}</div>{error&&<div className="error" style={{marginBottom:10}}>{error}</div>}{orders.length===0&&!error?<div className="empty"><div style={{fontSize:45}}>📦</div><h2>No orders yet</h2><p>Your completed orders will appear here.</p><a className="primary-btn" style={{display:"inline-block",maxWidth:200}} href="/">Shop now</a></div>:orders.map(o=>{const idx=steps.indexOf(o.status);return <article className="order-card" key={o.ref}><div className="order-head"><div><b>Order #{o.ref}</b><div className="muted small">{new Date(o.created).toLocaleString("en-NG")}</div></div><span className="status">{o.status.replaceAll("_"," ")}</span></div><div className="order-items">{o.items.map(i=><div key={i.product_id} title={i.name}><img className="mini-thumb" src={i.image_url} alt=""/></div>)}</div>{o.status!=="cancelled"&&<div className="timeline">{steps.map((s,i)=><div key={s} className={`step ${idx>=i?"done":""}`}><div className="step-dot"/>{labels[i]}</div>)}</div>}{o.status==="cancelled"&&<div className="error">This order was cancelled and the reserved stock was restored.</div>}<div className="summary-row"><span>{o.items.reduce((s,i)=>s+i.qty,0)} items · {o.lga_name}</span><b>{naira(o.total)}</b></div><div className="small muted">Deliver to: {o.address} · {o.phone}</div>{["pending","awaiting_payment"].includes(o.status)&&<button className="danger-btn" style={{marginTop:10}} onClick={()=>cancel(o.ref)}>Cancel order</button>}</article>})}</div></main>}

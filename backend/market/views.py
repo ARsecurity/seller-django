@@ -27,6 +27,24 @@ class IsAdminOrReadOnly(permissions.BasePermission):
         return request.method in permissions.SAFE_METHODS or bool(request.user and request.user.is_staff)
 
 
+class AddressViewSet(viewsets.ModelViewSet):
+    serializer_class = UserAddressSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+    def get_queryset(self):
+        return UserAddress.objects.filter(user=self.request.user).select_related("lga")
+
+    def perform_create(self, serializer):
+        address = serializer.save()
+        if not UserAddress.objects.filter(user=self.request.user, is_default=True).exists():
+            UserAddress.objects.filter(pk=address.pk).update(is_default=True)
+
+    def perform_update(self, serializer):
+        serializer.save()
+
+
+
 class ProductViewSet(viewsets.ModelViewSet):
     serializer_class = ProductSerializer
     permission_classes = [IsAdminOrReadOnly]
@@ -80,6 +98,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
 class OrderViewSet(viewsets.ModelViewSet):
     serializer_class = OrderSerializer
+    pagination_class = None
     permission_classes = [permissions.IsAuthenticated]
     http_method_names = ["get", "post", "head", "options"]
     lookup_field = "ref"

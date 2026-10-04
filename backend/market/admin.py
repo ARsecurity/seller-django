@@ -123,6 +123,13 @@ class CategoryAdmin(admin.ModelAdmin):
     search_fields = ["name", "slug"]
 
 
+
+@admin.register(UserAddress)
+class UserAddressAdmin(admin.ModelAdmin):
+    list_display = ["user", "first_name", "last_name", "phone", "city", "lga", "is_default"]
+    list_filter = ["state", "city", "lga", "is_default"]
+    search_fields = ["user__username", "first_name", "last_name", "phone", "address"]
+
 admin.site.register(Coupon)
 admin.site.register(Review)
 admin.site.register(PaymentAccount)
