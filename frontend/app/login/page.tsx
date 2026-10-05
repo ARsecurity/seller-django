@@ -71,9 +71,7 @@ function LoginForm() {
               />
             </div>
 
-            <button className="primary-btn" type="submit">
-              Sign in
-            </button>
+            <button className="primary-btn">Sign in</button>
           </form>
 
           <div style={{ textAlign: "center", marginTop: 8 }}>
@@ -86,7 +84,10 @@ function LoginForm() {
             New here?{" "}
             <Link
               href="/register"
-              style={{ color: "var(--orange)", fontWeight: 800 }}
+              style={{
+                color: "var(--orange)",
+                fontWeight: 800,
+              }}
             >
               Create an account
             </Link>
@@ -97,25 +98,9 @@ function LoginForm() {
   );
 }
 
-function LoginFallback() {
-  return (
-    <main className="page">
-      <div className="shell" style={{ maxWidth: 500 }}>
-        <div className="panel">
-          <div style={{ textAlign: "center", fontSize: 40 }}>🛍️</div>
-          <h1 style={{ textAlign: "center" }}>Welcome back</h1>
-          <p className="muted" style={{ textAlign: "center" }}>
-            Loading sign in...
-          </p>
-        </div>
-      </div>
-    </main>
-  );
-}
-
 export default function Login() {
   return (
-    <Suspense fallback={<LoginFallback />}>
+    <Suspense fallback={<main className="page">Loading...</main>}>
       <LoginForm />
     </Suspense>
   );
