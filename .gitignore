@@ -4,3 +4,11 @@ __pycache__
 *.sqlite3
 staticfiles
 .env
+
+# Android / Gradle
+.gradle/
+**/build/
+local.properties
+*.iml
+.idea/
+*.save
