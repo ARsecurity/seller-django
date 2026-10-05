@@ -2,52 +2,98 @@ package ng.seller.customer
 
 import android.os.Bundle
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import org.json.JSONObject
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import ng.seller.customer.adapters.ProductAdapter
+import ng.seller.customer.api.JsonParser
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var statusText: TextView
+    private lateinit var productRecycler: RecyclerView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         setContentView(R.layout.activity_main)
 
-        statusText = findViewById(R.id.statusText)
+        statusText = findViewById(R.id.homeStatus)
+        productRecycler = findViewById(R.id.productRecycler)
 
-        statusText.text = "Connecting to Seller..."
+        setupRecycler()
+        loadHome()
+    }
 
-        ApiClient.get("home/", null, object : ApiClient.Callback {
+    private fun setupRecycler() {
+        productRecycler.layoutManager =
+            GridLayoutManager(this, 2)
+    }
 
-            override fun onSuccess(response: String) {
-                runOnUiThread {
-                    try {
-                        val json = JSONObject(response)
+    private fun loadHome() {
 
-                        val deals = json.optJSONArray("deals")
-                        val trending = json.optJSONArray("trending")
+        statusText.text = "Loading products..."
 
-                        val dealCount = deals?.length() ?: 0
-                        val trendingCount = trending?.length() ?: 0
+        ApiClient.get(
+            "home/",
+            null,
+            object : ApiClient.Callback {
+
+                override fun onSuccess(response: String) {
+
+                    runOnUiThread {
+
+                        try {
+                            val home =
+                                JsonParser.home(response)
+
+                            val products =
+                                home.deals + home.trending
+
+                            productRecycler.adapter =
+                                ProductAdapter(
+                                    products
+                                ) {
+                                    Toast.makeText(
+                                        this@MainActivity,
+                                        it.name,
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+
+                            statusText.text =
+                                "${products.size} products available"
+
+                        } catch (e: Exception) {
+
+                            statusText.text =
+                                "Unable to read products"
+
+                            Toast.makeText(
+                                this@MainActivity,
+                                e.message ?: "Unknown error",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                }
+
+                override fun onError(error: String) {
+
+                    runOnUiThread {
 
                         statusText.text =
-                            "Connected successfully!\n\n" +
-                            "Deals: $dealCount\n" +
-                            "Trending: $trendingCount"
-                    } catch (e: Exception) {
-                        statusText.text =
-                            "Connected, but response could not be read.\n\n${e.message}"
+                            "Unable to load products"
+
+                        Toast.makeText(
+                            this@MainActivity,
+                            error,
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                 }
             }
-
-            override fun onError(error: String) {
-                runOnUiThread {
-                    statusText.text =
-                        "Connection failed:\n\n$error"
-                }
-            }
-        })
+        )
     }
 }
-
